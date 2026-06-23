@@ -70,6 +70,11 @@ const indexedContractIds = Array.from(
   ])
 )
 
+const endpoint = process.env.ENDPOINT ?? contractConfig.network.horizonUrl
+const chainId = process.env.CHAIN_ID ?? contractConfig.network.passphrase
+const sorobanEndpoint =
+  process.env.SOROBAN_ENDPOINT ?? contractConfig.network.sorobanRpcUrl
+
 /* This is your project configuration */
 const project: StellarProject = {
   specVersion: "1.0.0",
@@ -91,7 +96,11 @@ const project: StellarProject = {
     file: "./schema.graphql",
   },
   network: {
-    chainId: process.env.CHAIN_ID ?? contractConfig.network.passphrase,
+    /* Stellar and Soroban uses the network passphrase as the chainId
+      'Test SDF Network ; September 2015' for testnet
+      'Public Global Stellar Network ; September 2015' for mainnet
+      'Test SDF Future Network ; October 2022' for Future Network */
+    chainId,
     /**
      * These endpoint(s) should be public non-pruned archive node
      * We recommend providing more than one endpoint for improved reliability, performance, and uptime
@@ -100,13 +109,10 @@ const project: StellarProject = {
      * If you use a rate limited endpoint, adjust the --batch-size and --workers parameters
      * These settings can be found in your docker-compose.yaml, they will slow indexing but prevent your project being rate limited
      */
-    endpoint: (process.env.ENDPOINT ?? contractConfig.network.horizonUrl).split(
-      ","
-    ) as string[] | string,
+    endpoint: endpoint.split(",").map((value) => value.trim()),
     /* This is a specific Soroban endpoint
       It is only required when you are using a soroban/EventHandler */
-    sorobanEndpoint:
-      process.env.SOROBAN_ENDPOINT ?? contractConfig.network.sorobanRpcUrl,
+    sorobanEndpoint,
   },
   dataSources: [
     {

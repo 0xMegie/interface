@@ -5,7 +5,6 @@ import path from "path"
 type EnvMap = Record<string, string>
 
 type ContractConfig = {
-  generatedAt: string
   source: {
     contractsRepo: string
     files: string[]
@@ -366,7 +365,6 @@ function buildConfig(args: ReturnType<typeof parseArgs>): ContractConfig {
   })
 
   return {
-    generatedAt: new Date().toISOString(),
     source: {
       contractsRepo,
       files: [

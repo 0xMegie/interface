@@ -2,22 +2,78 @@ import {
   StellarDatasourceKind,
   StellarHandlerKind,
   StellarProject,
-} from "@subql/types-stellar";
-import { Horizon } from "@stellar/stellar-sdk";
+} from "@subql/types-stellar"
 
-import * as dotenv from 'dotenv';
-import path from 'path';
+import * as dotenv from "dotenv"
+import fs from "fs"
+import path from "path"
 
-const mode = process.env.NODE_ENV || 'production';
+const mode = process.env.NODE_ENV || "production"
 
 // Load the appropriate .env file
-const dotenvPath = path.resolve(__dirname, `.env${mode !== 'production' ? `.${mode}` : ''}`);
-dotenv.config({ path: dotenvPath, quiet: true });
+const dotenvPath = path.resolve(
+  __dirname,
+  `.env${mode !== "production" ? `.${mode}` : ""}`
+)
+dotenv.config({ path: dotenvPath, quiet: true })
+
+const configNetwork =
+  process.env.INDEXER_NETWORK ??
+  (mode === "production" || mode === "develop" ? "testnet" : mode)
+
+type IndexerContractConfig = {
+  network: {
+    name: string
+    passphrase: string
+    horizonUrl: string
+    sorobanRpcUrl: string
+  }
+  contracts: Record<string, string>
+  tokens: Record<string, string>
+  markets: Array<{
+    name: string
+    marketToken: string
+    indexToken: string
+    longToken: string
+    shortToken: string
+  }>
+}
+
+function loadIndexerContractConfig(): IndexerContractConfig {
+  const configPath =
+    process.env.INDEXER_CONTRACT_CONFIG ??
+    path.resolve(__dirname, "config", `contracts.${configNetwork}.json`)
+
+  if (!fs.existsSync(configPath)) {
+    throw new Error(
+      `Missing indexer contract config at ${configPath}. Run bun run --cwd apps/s03-indexer sync:contracts:${configNetwork}.`
+    )
+  }
+
+  return JSON.parse(
+    fs.readFileSync(configPath, "utf8")
+  ) as IndexerContractConfig
+}
+
+const contractConfig = loadIndexerContractConfig()
+
+const indexedContractIds = Array.from(
+  new Set([
+    ...Object.values(contractConfig.contracts),
+    ...Object.values(contractConfig.tokens),
+    ...contractConfig.markets.flatMap((market) => [
+      market.marketToken,
+      market.indexToken,
+      market.longToken,
+      market.shortToken,
+    ]),
+  ])
+)
 
 /* This is your project configuration */
 const project: StellarProject = {
   specVersion: "1.0.0",
-  name: "soroban-testnet-starter",
+  name: `so4-market-${contractConfig.network.name}`,
   version: "0.0.1",
   runner: {
     node: {
@@ -29,18 +85,13 @@ const project: StellarProject = {
       version: "*",
     },
   },
-  description:
-    "This project can be use as a starting point for developing your new Stellar SubQuery project (testnet)",
-  repository: "https://github.com/subquery/stellar-subql-starter",
+  description: `SO4 market indexer for ${contractConfig.network.name}`,
+  repository: "https://github.com/SO4-Markets/interface",
   schema: {
     file: "./schema.graphql",
   },
   network: {
-    /* Stellar and Soroban uses the network passphrase as the chainId
-      'Test SDF Network ; September 2015' for testnet
-      'Public Global Stellar Network ; September 2015' for mainnet
-      'Test SDF Future Network ; October 2022' for Future Network */
-    chainId: process.env.CHAIN_ID!,
+    chainId: process.env.CHAIN_ID ?? contractConfig.network.passphrase,
     /**
      * These endpoint(s) should be public non-pruned archive node
      * We recommend providing more than one endpoint for improved reliability, performance, and uptime
@@ -49,10 +100,13 @@ const project: StellarProject = {
      * If you use a rate limited endpoint, adjust the --batch-size and --workers parameters
      * These settings can be found in your docker-compose.yaml, they will slow indexing but prevent your project being rate limited
      */
-    endpoint: process.env.ENDPOINT!?.split(',') as string[] | string,
+    endpoint: (process.env.ENDPOINT ?? contractConfig.network.horizonUrl).split(
+      ","
+    ) as string[] | string,
     /* This is a specific Soroban endpoint
       It is only required when you are using a soroban/EventHandler */
-    sorobanEndpoint: "https://soroban-testnet.stellar.org",
+    sorobanEndpoint:
+      process.env.SOROBAN_ENDPOINT ?? contractConfig.network.sorobanRpcUrl,
   },
   dataSources: [
     {
@@ -62,43 +116,18 @@ const project: StellarProject = {
       mapping: {
         file: "./dist/index.js",
         handlers: [
-          {
-            handler: "handleOperation",
-            kind: StellarHandlerKind.Operation,
-            filter: {
-              type: Horizon.HorizonApi.OperationResponseType.payment,
-            },
-          },
-          {
-            handler: "handleCredit",
-            kind: StellarHandlerKind.Effects,
-            filter: {
-              type: "account_credited",
-            },
-          },
-          {
-            handler: "handleDebit",
-            kind: StellarHandlerKind.Effects,
-            filter: {
-              type: "account_debited",
-            },
-          },
-          {
+          ...indexedContractIds.map((contractId) => ({
             handler: "handleEvent",
             kind: StellarHandlerKind.Event,
             filter: {
-              /* You can optionally specify a smart contract address here
-                contractId: "" */
-              topics: [
-                "transfer", // Topic signature(s) for the events, there can be up to 4
-              ],
+              contractId,
             },
-          },
+          })),
         ],
       },
     },
   ],
-};
+}
 
 // Must set default to the project instance
-export default project;
+export default project

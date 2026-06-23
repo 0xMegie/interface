@@ -6,6 +6,8 @@
   "scripts": {
     "build": "subql codegen && subql build",
     "codegen": "subql codegen",
+    "sync:contracts:testnet": "bun run scripts/sync-contracts.ts --network testnet",
+    "sync:contracts:local": "bun run scripts/sync-contracts.ts --network local --allow-missing-markets",
     "start:docker": "docker compose pull && docker compose up --remove-orphans",
     "dev": "subql codegen && subql build && docker compose pull && docker compose up --remove-orphans",
     "prepack": "rm -rf dist && bun run build",
